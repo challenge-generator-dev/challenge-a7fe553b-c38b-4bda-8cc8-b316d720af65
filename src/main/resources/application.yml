@@ -1,0 +1,133 @@
+spring:
+  application:
+    name: payments-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/payments_db
+    username: payments_user
+    password: payments_pass
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: false
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api/v1
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
+    ratelimiters:
+      enabled: true
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 5s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        registerHealthIndicator: true
+    instances:
+      riskBureau:
+        baseConfig: default
+        failureRateThreshold: 30
+        waitDurationInOpenState: 10s
+      bankCore:
+        baseConfig: default
+        failureRateThreshold: 40
+        waitDurationInOpenState: 8s
+      fraudEngine:
+        baseConfig: default
+        failureRateThreshold: 25
+        waitDurationInOpenState: 12s
+      creditOriginator:
+        baseConfig: default
+        failureRateThreshold: 35
+        waitDurationInOpenState: 7s
+
+  retry:
+    configs:
+      default:
+        maxAttempts: 3
+        waitDuration: 500ms
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        retryExceptions:
+          - org.springframework.web.client.HttpServerErrorException
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+          - com.pragma.payments.domain.exception.RiskBureauException
+          - com.pragma.payments.domain.exception.FraudEngineException
+    instances:
+      riskBureau:
+        baseConfig: default
+        maxAttempts: 4
+        waitDuration: 1s
+      bankCore:
+        baseConfig: default
+        maxAttempts: 3
+        waitDuration: 800ms
+      fraudEngine:
+        baseConfig: default
+        maxAttempts: 5
+        waitDuration: 1s
+      creditOriginator:
+        baseConfig: default
+        maxAttempts: 3
+        waitDuration: 600ms
+
+  bulkhead:
+    configs:
+      default:
+        maxConcurrentCalls: 25
+        maxWaitDuration: 0
+    instances:
+      riskBureau:
+        baseConfig: default
+        maxConcurrentCalls: 15
+      bankCore:
+        baseConfig: default
+        maxConcurrentCalls: 20
+      fraudEngine:
+        baseConfig: default
+        maxConcurrentCalls: 10
+      creditOriginator:
+        baseConfig: default
+        maxConcurrentCalls: 18
+
+logging:
+  level:
+    com.pragma.payments: INFO
+    org.springframework.web: INFO
+    org.hibernate.SQL: DEBUG
+    io.github.resilience4j: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: ./logs/payments-service.log
+    max-size: 10MB
+    max-history: 7
